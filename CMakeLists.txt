@@ -410,6 +410,14 @@ set_package_properties(Qt5Quick PROPERTIES
         PURPOSE "Optionally used for the touch gui for Krita")
 
 macro_bool_to_01(Qt5Quick_FOUND HAVE_QT_QUICK)
+if (Qt5Quick_FOUND)
+    get_target_property(Qt5Quick_LIBRARY Qt5::Quick "LOCATION")
+    list (APPEND ANDROID_EXTRA_LIBS ${Qt5Quick_LIBRARY})
+
+    get_target_property(Qt5Qml_LIBRARY Qt5::Qml "LOCATION")
+    list (APPEND ANDROID_EXTRA_LIBS ${Qt5Qml_LIBRARY})
+endif()
+
 
 find_package(Qt5QuickWidgets ${MIN_QT_VERSION})
 set_package_properties(Qt5QuickWidgets PROPERTIES
@@ -417,6 +425,11 @@ set_package_properties(Qt5QuickWidgets PROPERTIES
         URL "https://www.qt.io/"
         TYPE OPTIONAL
         PURPOSE "Optionally used for the touch gui for Krita")
+endif()
+
+if (Qt5QuickWidgets_FOUND)
+    get_target_property(Qt5QuickWidgets_LIBRARY Qt5::QuickWidgets "LOCATION")
+    list (APPEND ANDROID_EXTRA_LIBS ${Qt5QuickWidgets_LIBRARY})
 endif()
 
 if (NOT WIN32 AND NOT APPLE AND NOT ANDROID)
@@ -525,7 +538,11 @@ kde_enable_exceptions()
 set(KRITA_DEFAULT_TEST_DATA_DIR ${CMAKE_SOURCE_DIR}/sdk/tests/data/)
 macro(macro_add_unittest_definitions)
   add_definitions(-DFILES_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data/")
-  add_definitions(-DFILES_OUTPUT_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+  if(WIN32)
+    add_definitions(-DFILES_OUTPUT_DIR="${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+  else()
+    add_definitions(-DFILES_OUTPUT_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+  endif()
   add_definitions(-DFILES_DEFAULT_DATA_DIR="${KRITA_DEFAULT_TEST_DATA_DIR}")
   add_definitions(-DSYSTEM_RESOURCES_DATA_DIR="${CMAKE_SOURCE_DIR}/krita/data/")
 endmacro()
@@ -568,7 +585,7 @@ if (ANDROID)
     set (KF5_LIBRARIES              ${CMAKE_CURRENT_BINARY_DIR}/i/lib)
 endif()
 
-find_package(PNG REQUIRED)
+find_package(PNG REQUIRED "1.2.6")
 list (APPEND ANDROID_EXTRA_LIBS ${PNG_LIBRARY})
 
 if (APPLE)
@@ -791,6 +808,12 @@ if(LCMS2_FOUND)
     endif()
     set(HAVE_REQUIRED_LCMS_VERSION TRUE)
     set(HAVE_LCMS2 TRUE)
+
+    include(CheckIncludeFileCXX)
+
+    set(CMAKE_REQUIRED_INCLUDES ${LCMS2_INCLUDE_DIR})
+    set(CMAKE_REQUIRED_LIBRARIES ${LCMS2_LIBRARIES})
+    CHECK_INCLUDE_FILE_CXX("lcms2_fast_float.h" HAVE_LCMS_FAST_FLOAT_PLUGIN)
 endif()
 list (APPEND ANDROID_EXTRA_LIBS ${LCMS2_LIBRARIES})
 

@@ -92,6 +92,8 @@
 #include <KisResourceIterator.h>
 #include <KisResourceTypes.h>
 #include <KisResourceCacheDb.h>
+#include <KisStorageModel.h>
+#include <KisStorageFilterProxyModel.h>
 
 #ifdef Q_OS_ANDROID
 #include <KisAndroidFileManager.h>
@@ -142,6 +144,8 @@
 #include <kritaversion.h>
 #include "KisCanvasWindow.h"
 #include "kis_action.h"
+#include <katecommandbar.h>
+#include "KisNodeActivationActionCreatorVisitor.h"
 
 #include <mutex>
 
@@ -198,6 +202,8 @@ public:
         mdiArea->setTabsMovable(true);
         mdiArea->setActivationOrder(QMdiArea::ActivationHistoryOrder);
         mdiArea->setDocumentMode(true);
+
+        commandBar = new KateCommandBar(parent);
     }
 
     ~Private() {
@@ -240,7 +246,7 @@ public:
     KisAction *toggleDetachCanvas {0};
     KisAction *fullScreenMode {0};
     KisAction *showSessionManager {0};
-
+    KisAction *commandBarAction {0};
     KisAction *expandingSpacers[2];
 
     KActionMenu *styleMenu;
@@ -289,6 +295,8 @@ public:
 
     QUuid workspaceBorrowedBy;
     KisSignalAutoConnectionsStore screenConnectionsStore;
+
+    KateCommandBar *commandBar {0};
 
 #ifdef Q_OS_ANDROID
     KisAndroidFileManager *fileManager;
@@ -441,10 +449,8 @@ KisMainWindow::KisMainWindow(QUuid uuid)
     d->mdiArea->setTabPosition(QTabWidget::North);
     d->mdiArea->setTabsClosable(true);
 
-    // Tab close button override
-    // Windows just has a black X, and Ubuntu has a dark x that is hard to read
-    // just switch this icon out for all OSs so it is easier to see
-    d->mdiArea->setStyleSheet("QTabBar::close-button { image: url(:/pics/broken-preset.png) }");
+    themeChanged(); // updates icon styles
+
 
     setCentralWidget(d->widgetStack);
     d->widgetStack->setCurrentIndex(0);
@@ -596,6 +602,11 @@ KisMainWindow::KisMainWindow(QUuid uuid)
     connect(window, SIGNAL(screenChanged(QScreen *)), this, SLOT(windowScreenChanged(QScreen *)));
 
 #ifdef Q_OS_ANDROID
+    // HACK: This prevents the mainWindow from going beyond the screen with no
+    // way to bring it back. Apparently the size doesn't matter here as long as
+    // it remains fixed?
+    setFixedSize(KisApplication::primaryScreen()->availableGeometry().size());
+
     connect(d->fileManager, SIGNAL(sigFileSelected(QUrl)), this, SLOT(slotFileSelected(QUrl)));
     connect(d->fileManager, SIGNAL(sigEmptyFilePath()), this, SLOT(slotEmptyFilePath()));
 
@@ -639,6 +650,11 @@ KisMainWindow::~KisMainWindow()
     delete d->viewManager;
     delete d;
 
+}
+
+QMenu *KisMainWindow::createPopupMenu()
+{
+    return 0;
 }
 
 QUuid KisMainWindow::id() const {
@@ -810,6 +826,24 @@ void KisMainWindow::slotThemeChanged()
             }
         }
     }
+
+    // update MDI area theme
+    // Tab close button override
+    // just switch this icon out for all OSs so it is easier to see
+    QString themeName = d->themeManager->currentThemeName();
+    bool isDarkTheme = themeName.toLower().contains("dark");
+    if(isDarkTheme) {
+        d->mdiArea->setStyleSheet("QTabBar::close-button { image: url(:/pics/light_close-tab.png) }");
+    } else {
+        d->mdiArea->setStyleSheet("QTabBar::close-button { image: url(:/pics/dark_close-tab.png) }");
+    }
+
+
+    // all global styles can be set here. Build them out line by line so it is easier to read/manage
+    QString stylesBuilder;
+    QString tableHeaderSpacing = "QHeaderView::section {padding: 7px; }";
+    stylesBuilder.append(tableHeaderSpacing);
+    qApp->setStyleSheet(stylesBuilder);
 
     emit themeChanged();
 }
@@ -1781,6 +1815,58 @@ void KisMainWindow::restoreWorkspace()
     restoreWorkspace(resourceId);
 }
 
+void KisMainWindow::openCommandBar()
+{
+    QList<KActionCollection *> actionCollections;
+
+    auto clients = guiFactory()->clients();
+    int actionsCount = 0;
+    for (const KXMLGUIClient *c : clients) {
+        if (!c) {
+            continue;
+        }
+        if (auto collection = c->actionCollection()) {
+            actionCollections.append(collection);
+            actionsCount += collection->count();
+        }
+    }
+
+    if (activeKisView()) {
+        KActionCollection *layerActionCollection = new KActionCollection(0, "layeractions");
+        layerActionCollection->setComponentDisplayName(i18n("Layers/Masks"));
+        KisNodeActivationActionCreatorVisitor v(layerActionCollection, viewManager()->nodeManager());
+        activeKisView()->image()->rootLayer()->accept(v);
+        actionCollections.append(layerActionCollection);
+        actionsCount += layerActionCollection->count();
+    }
+
+    d->commandBar->updateBar(actionCollections, actionsCount);
+    centralWidget()->setFocusProxy(d->commandBar);
+}
+
+void KisMainWindow::slotStoragesWarning(const QString &/*location*/)
+{
+    QString warning;
+    if (!checkActiveBundlesAvailable()) {
+        warning = i18n("You don't have any resource bundles enabled.");
+    }
+
+    if (!checkPaintOpAvailable()) {
+        warning += i18n("\nThere are no brush presets available. Please enable a bundle that has presets before continuing.\n");
+        QMessageBox::critical(this, i18nc("@title:window", "Krita"), warning);
+
+        QAction *action = actionCollection()->action("manage_bundles");
+        if (action) {
+            action->trigger();
+        }
+    }
+
+    if (!checkActiveBundlesAvailable()) {
+        QMessageBox::warning(this, i18nc("@title:window", "Krita"), warning + i18n("\nOnly your local resources are available."));
+    }
+
+}
+
 bool KisMainWindow::restoreWorkspace(int workspaceId)
 {
     KisWorkspaceResourceSP workspace =
@@ -2573,14 +2659,7 @@ void KisMainWindow::checkSanity()
         return;
     }
 
-    KisPaintOpPresetResourceServer * rserver = KisResourceServerProvider::instance()->paintOpPresetServer();
-    if (rserver->resourceCount() == 0) {
-        m_errorMessage = i18n("Krita cannot find any brush presets! Krita will quit now.");
-        m_dieOnError = true;
-        QTimer::singleShot(0, this, SLOT(showErrorAndDie()));
-        return;
-    }
-
+    slotStoragesWarning();
 
     // window is created signal (used in Python)
     // there must be some asynchronous things happening in the constructor, because the window cannot
@@ -2743,6 +2822,9 @@ void KisMainWindow::createActions()
     d->showSessionManager = actionManager->createAction("file_sessions");
     connect(d->showSessionManager, SIGNAL(triggered(bool)), this, SLOT(slotShowSessionManager()));
 
+    d->commandBarAction = actionManager->createAction("command_bar_open");
+    connect(d->commandBarAction, SIGNAL(triggered(bool)), this, SLOT(openCommandBar()));
+
     actionManager->createStandardAction(KStandardAction::Preferences, this, SLOT(slotPreferences()));
 
     for (int i = 0; i < 2; i++) {
@@ -2755,13 +2837,11 @@ void KisMainWindow::createActions()
 
 void KisMainWindow::applyToolBarLayout()
 {
-    const bool isPlastiqueStyle = style()->objectName() == "plastique";
 
     Q_FOREACH (KToolBar *toolBar, toolBars()) {
         toolBar->layout()->setSpacing(4);
-        if (isPlastiqueStyle) {
-            toolBar->setContentsMargins(0, 0, 0, 2);
-        }
+        toolBar->setStyleSheet("QToolBar { border: none }"); // has a border in "Fusion" style that people don't like
+
         //Hide text for buttons with an icon in the toolbar
         Q_FOREACH (QAction *ac, toolBar->actions()){
             if (ac->icon().pixmap(QSize(1,1)).isNull() == false){
@@ -2878,6 +2958,21 @@ void KisMainWindow::orientationChanged()
     }
 }
 
+bool KisMainWindow::checkActiveBundlesAvailable()
+{
+    KisStorageFilterProxyModel proxy;
+    proxy.setSourceModel(KisStorageModel::instance());
+    proxy.setFilter(KisStorageFilterProxyModel::ByStorageType,
+                    QStringList()
+                    << KisResourceStorage::storageTypeToUntranslatedString(KisResourceStorage::StorageType::Bundle));
 
+    return (proxy.rowCount() > 0);
+}
+
+bool KisMainWindow::checkPaintOpAvailable()
+{
+    KisPaintOpPresetResourceServer * rserver = KisResourceServerProvider::instance()->paintOpPresetServer();
+    return (rserver->resourceCount() > 0);
+}
 
 #include <moc_KisMainWindow.cpp>

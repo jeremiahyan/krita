@@ -190,7 +190,7 @@ KisAnimTimelineFramesView::KisAnimTimelineFramesView(QWidget *parent)
 
     m_d->addLayersButton = new QToolButton(this);
     m_d->addLayersButton->setAutoRaise(true);
-    m_d->addLayersButton->setIcon(KisIconUtils::loadIcon("addlayer"));
+    m_d->addLayersButton->setIcon(KisIconUtils::loadIcon("list-add"));
     m_d->addLayersButton->setIconSize(QSize(20, 20));
     m_d->addLayersButton->setPopupMode(QToolButton::InstantPopup);
     m_d->addLayersButton->setMenu(m_d->layerEditingMenu);
@@ -453,7 +453,7 @@ void KisAnimTimelineFramesView::slotCanvasUpdate(KoCanvasBase *canvas)
 
 void KisAnimTimelineFramesView::slotUpdateIcons()
 {
-    m_d->addLayersButton->setIcon(KisIconUtils::loadIcon("addlayer"));
+    m_d->addLayersButton->setIcon(KisIconUtils::loadIcon("list-add"));
     m_d->audioOptionsButton->setIcon(KisIconUtils::loadIcon("audio-none"));
     m_d->zoomDragButton->setIcon(KisIconUtils::loadIcon("zoom-horizontal"));
 }
@@ -1018,17 +1018,33 @@ void KisAnimTimelineFramesView::mousePressEvent(QMouseEvent *event)
                 QPoint(horizontalOffset(), verticalOffset()) + event->pos();
         m_d->lastPressedModifier = event->modifiers();
 
+        m_d->initialDragPanPos = event->pos();
+
         QAbstractItemView::mousePressEvent(event);
     }
 }
 
 void KisAnimTimelineFramesView::mouseMoveEvent(QMouseEvent *e)
 {
+    // Custom keyframe dragging distance based on zoom level.
+    if (state() == DraggingState &&
+        (horizontalHeader()->defaultSectionSize() / 2) < QApplication::startDragDistance() ) {
+
+        const QPoint dragVector = e->pos() - m_d->initialDragPanPos;
+        if (dragVector.manhattanLength() >= (horizontalHeader()->defaultSectionSize() / 2)) {
+            startDrag(model()->supportedDragActions());
+            setState(NoState);
+            stopAutoScroll();
+        }
+    }
+
     if (m_d->modifiersCatcher->modifierPressed("pan-zoom")) {
 
         if (e->buttons() & Qt::RightButton) {
+
 //            m_d->zoomDragButton->continueZoom(e->pos());
         } else if (e->buttons() & Qt::LeftButton) {
+
             QPoint diff = e->pos() - m_d->initialDragPanPos;
             QPoint offset = QPoint(m_d->initialDragPanValue.x() - diff.x(),
                                    m_d->initialDragPanValue.y() - diff.y());
@@ -1199,7 +1215,14 @@ void KisAnimTimelineFramesView::dragMoveEvent(QDragMoveEvent *event)
     m_d->dragInProgress = true;
     m_d->model->setScrubState(true);
 
-    QTableView::dragMoveEvent(event);
+    QAbstractItemView::dragMoveEvent(event);
+
+    // Let's check for moving within a selection --
+    // We want to override the built in qt behavior that
+    // denies drag events when dragging within a selection...
+    if (!event->isAccepted() && selectionModel()->isSelected(indexAt(event->pos()))) {
+        event->setAccepted(true);
+    }
 
     if (event->isAccepted()) {
         QModelIndex index = indexAt(event->pos());
@@ -1232,6 +1255,19 @@ void KisAnimTimelineFramesView::dropEvent(QDropEvent *event)
     }
 
     QAbstractItemView::dropEvent(event);
+
+    // Override drop event to accept drops within selected range.0
+    QModelIndex index = indexAt(event->pos());
+    if (!event->isAccepted() &&  selectionModel()->isSelected(index)) {
+        event->setAccepted(true);
+        const Qt::DropAction action = event->dropAction();
+        const int row = event->pos().y();
+        const int column = event->pos().x();
+        if (m_d->model->dropMimeData(event->mimeData(), action, row, column, index)) {
+            event->acceptProposedAction();
+        }
+    }
+
     m_d->dragWasSuccessful = event->isAccepted();
 }
 

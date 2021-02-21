@@ -73,8 +73,8 @@ public:
     QSplitter *splitter {0};
     QGridLayout *buttonLayout {0};
 
-    QPushButton *importButton {0};
-    QPushButton *deleteButton {0};
+    QToolButton *importButton {0};
+    QToolButton *deleteButton {0};
 
     bool usePreview {false};
     bool tiledPreview {false};
@@ -148,16 +148,17 @@ KisResourceItemChooser::KisResourceItemChooser(const QString &resourceType, bool
 
     d->buttonLayout = new QGridLayout();
 
-    d->importButton = new QPushButton(this);
-
+    d->importButton = new QToolButton(this);
     d->importButton->setToolTip(i18nc("@info:tooltip", "Import resource"));
+    d->importButton->setAutoRaise(true);
     d->importButton->setEnabled(true);
     d->buttonGroup->addButton(d->importButton, Button_Import);
     d->buttonLayout->addWidget(d->importButton, 0, 0);
 
-    d->deleteButton = new QPushButton(this);
+    d->deleteButton = new QToolButton(this);
     d->deleteButton->setToolTip(i18nc("@info:tooltip", "Delete resource"));
     d->deleteButton->setEnabled(false);
+    d->deleteButton->setAutoRaise(true);
     d->buttonGroup->addButton(d->deleteButton, Button_Remove);
     d->buttonLayout->addWidget(d->deleteButton, 0, 1);
 
@@ -175,6 +176,8 @@ KisResourceItemChooser::KisResourceItemChooser(const QString &resourceType, bool
     d->tagManager = new KisResourceTaggingManager(resourceType, d->tagFilterProxyModel, this);
 
     d->storagePopupButton = new KisStorageChooserWidget(this);
+    d->storagePopupButton->setToolTip(i18n("Storage Resources"));
+    d->storagePopupButton->setFlat(true);
 
     layout->addWidget(d->tagManager->tagChooserWidget(), 0, 0);
     layout->addWidget(d->viewModeButton, 0, 1);
@@ -509,8 +512,10 @@ void KisResourceItemChooser::updateView()
     }
 
     /// helps to set icons here in case the theme is changed
-    d->viewModeButton->setIcon(koIcon("view-choose"));
+    d->viewModeButton->setIcon(KisIconUtils::loadIcon("view-choose"));
+    d->viewModeButton->setAutoRaise(true);
     d->importButton->setIcon(koIcon("document-open"));
     d->deleteButton->setIcon(koIcon("trash-empty"));
     d->storagePopupButton->setIcon(koIcon("bundle_archive"));
+    d->tagManager->tagChooserWidget()->updateIcons();
 }

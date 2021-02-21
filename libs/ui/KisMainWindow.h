@@ -69,6 +69,9 @@ public:
      */
     ~KisMainWindow() override;
 
+    QMenu *createPopupMenu() override;
+
+
     QUuid id() const;
 
     /**
@@ -321,6 +324,13 @@ public Q_SLOTS:
      */
     void viewFullscreen(bool fullScreen);
 
+    /**
+     * @brief checkActiveStorages checks whether there is at least one bundle available and
+     * at least one paintop preset.
+     */
+    bool checkActiveBundlesAvailable();
+    bool checkPaintOpAvailable();
+
 
 private Q_SLOTS:
     /**
@@ -447,6 +457,11 @@ private Q_SLOTS:
     void orientationChanged();
 
     void restoreWorkspace();
+
+    void openCommandBar();
+
+    void slotStoragesWarning(const QString &location = QString());
+
 protected:
 
     void closeEvent(QCloseEvent * e) override;

@@ -98,6 +98,13 @@ public:
     virtual bool updateResource(KoResourceSP resource) = 0;
 
     /**
+     * @brief reloadResource
+     * @param resource
+     * @return
+     */
+    virtual bool reloadResource(KoResourceSP resource) = 0;
+
+    /**
      * @brief renameResource name the given resource. The resource will have its
      * name field reset, will be saved to the storage and there will be a new
      * version created in the database.
@@ -130,6 +137,7 @@ class KRITARESOURCES_EXPORT KisAllResourcesModel : public QAbstractTableModel, p
 private:
     friend class KisResourceModelProvider;
     friend class KisResourceModel;
+    friend class KisResourceQueryMapper;
     KisAllResourcesModel(const QString &resourceType, QObject *parent = 0);
 
 public:
@@ -153,6 +161,7 @@ public:
     bool importResourceFile(const QString &filename) override;
     bool addResource(KoResourceSP resource, const QString &storageId = QString()) override;
     bool updateResource(KoResourceSP resource) override;
+    bool reloadResource(KoResourceSP resource) override;
     bool renameResource(KoResourceSP resource, const QString &name) override;
     bool setResourceMetaData(KoResourceSP resource, QMap<QString, QVariant> metadata) override;
 
@@ -234,6 +243,7 @@ public:
     bool importResourceFile(const QString &filename) override;
     bool addResource(KoResourceSP resource, const QString &storageId = QString()) override;
     bool updateResource(KoResourceSP resource) override;
+    bool reloadResource(KoResourceSP resource) override;
     bool renameResource(KoResourceSP resource, const QString &name) override;
     bool setResourceMetaData(KoResourceSP resource, QMap<QString, QVariant> metadata) override;
 

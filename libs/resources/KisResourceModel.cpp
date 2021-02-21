@@ -16,7 +16,10 @@
 #include <KisResourceCacheDb.h>
 
 #include <KisResourceModelProvider.h>
+#include <KisStorageModel.h>
 #include <KisTagModel.h>
+
+#include <kis_debug.h>
 
 #include "KisResourceQueryMapper.h"
 
@@ -34,6 +37,8 @@ KisAllResourcesModel::KisAllResourcesModel(const QString &resourceType, QObject 
 
     connect(KisResourceLocator::instance(), SIGNAL(storageAdded(const QString&)), this, SLOT(addStorage(const QString&)));
     connect(KisResourceLocator::instance(), SIGNAL(storageRemoved(const QString&)), this, SLOT(removeStorage(const QString&)));
+    connect(KisStorageModel::instance(), SIGNAL(storageEnabled(const QString&)), this, SLOT(addStorage(const QString&)));
+    connect(KisStorageModel::instance(), SIGNAL(storageDisabled(const QString&)), this, SLOT(removeStorage(const QString&)));
 
     d->resourceType = resourceType;
     
@@ -45,7 +50,6 @@ KisAllResourcesModel::KisAllResourcesModel(const QString &resourceType, QObject 
                                        ",      resources.thumbnail\n"
                                        ",      resources.status\n"
                                        ",      storages.location\n"
-                                       ",      resources.version\n"
                                        ",      resource_types.name as resource_type\n"
                                        ",      resources.status as resource_active\n"
                                        ",      storages.active as storage_active\n"
@@ -343,6 +347,23 @@ bool KisAllResourcesModel::updateResource(KoResourceSP resource)
     return r;
 }
 
+bool KisAllResourcesModel::reloadResource(KoResourceSP resource)
+{
+    if (!resource || !resource->valid()) {
+        qWarning() << "Cannot reload resource. Resource is null or not valid";
+        return false;
+    }
+
+    if (!KisResourceLocator::instance()->reloadResource(d->resourceType, resource)) {
+        qWarning() << "Failed to reload resource" << resource;
+        return false;
+    }
+    bool r = resetQuery();
+    QModelIndex index = indexForResource(resource);
+    emit dataChanged(index, index, {Qt::EditRole});
+    return r;
+}
+
 bool KisAllResourcesModel::renameResource(KoResourceSP resource, const QString &name)
 {
     if (!resource || !resource->valid() || name.isEmpty()) {
@@ -443,16 +464,19 @@ int KisAllResourcesModel::rowCount(const QModelIndex &) const
 }
 
 
-void KisAllResourcesModel::addStorage(const QString &/*location*/)
+void KisAllResourcesModel::addStorage(const QString &location)
 {
+    Q_UNUSED(location)
     beginResetModel();
     resetQuery();
     endResetModel();
 }
 
 
-void KisAllResourcesModel::removeStorage(const QString &/*location*/)
+
+void KisAllResourcesModel::removeStorage(const QString &location)
 {
+    Q_UNUSED(location)
     beginResetModel();
     resetQuery();
     endResetModel();
@@ -554,6 +578,15 @@ bool KisResourceModel::updateResource(KoResourceSP resource)
     return false;
 }
 
+bool KisResourceModel::reloadResource(KoResourceSP resource)
+{
+    KisAbstractResourceModel *source = dynamic_cast<KisAbstractResourceModel*>(sourceModel());
+    if (source) {
+        return source->reloadResource(resource);
+    }
+    return false;
+}
+
 bool KisResourceModel::renameResource(KoResourceSP resource, const QString &name)
 {
     KisAbstractResourceModel *source = dynamic_cast<KisAbstractResourceModel*>(sourceModel());
@@ -581,7 +614,7 @@ bool KisResourceModel::filterAcceptsRow(int source_row, const QModelIndex &sourc
 {
     QModelIndex idx = sourceModel()->index(source_row, 0, source_parent);
     if (idx.isValid()) {
-        int id = idx.data(Qt::DisplayRole + KisAbstractResourceModel::Id).toInt();
+        int id = idx.data(Qt::UserRole + KisAbstractResourceModel::Id).toInt();
 
         if (d->showOnlyUntaggedResources) {
 

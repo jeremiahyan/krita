@@ -112,30 +112,37 @@ KisPaintopBox::KisPaintopBox(KisViewManager *view, QWidget *parent, const char *
 
     if (!cfg.toolOptionsInDocker()) {
         m_toolOptionsPopupButton = new KisPopupButton(this);
-        m_toolOptionsPopupButton->setIcon(KisIconUtils::loadIcon("configure"));
+        m_toolOptionsPopupButton->setIcon(KisIconUtils::loadIcon("view-choose"));
         m_toolOptionsPopupButton->setToolTip(i18n("Tool Settings"));
         m_toolOptionsPopupButton->setFixedSize(iconsize, iconsize);
+        m_toolOptionsPopupButton->setFlat(true);
     }
 
     m_brushEditorPopupButton = new KisIconWidget(this);
     m_brushEditorPopupButton->setIcon(KisIconUtils::loadIcon("paintop_settings_02"));
     m_brushEditorPopupButton->setToolTip(i18n("Edit brush settings"));
     m_brushEditorPopupButton->setFixedSize(iconsize, iconsize);
+    m_brushEditorPopupButton->setFlat(true);
 
     m_presetSelectorPopupButton = new KisPopupButton(this);
     m_presetSelectorPopupButton->setIcon(KisIconUtils::loadIcon("paintop_settings_01"));
     m_presetSelectorPopupButton->setToolTip(i18n("Choose brush preset"));
     m_presetSelectorPopupButton->setFixedSize(iconsize, iconsize);
+    m_presetSelectorPopupButton->setFlat(true);
 
     m_eraseModeButton = new KisHighlightedToolButton(this);
     m_eraseModeButton->setFixedSize(iconsize, iconsize);
     m_eraseModeButton->setCheckable(true);
+    m_eraseModeButton->setAutoRaise(true);
+
 
     m_eraseAction = m_viewManager->actionManager()->createAction("erase_action");
     m_eraseModeButton->setDefaultAction(m_eraseAction);
 
     m_reloadButton = new QToolButton(this);
     m_reloadButton->setFixedSize(iconsize, iconsize);
+    m_reloadButton->setAutoRaise(true); // make button flat
+
 
     m_reloadAction = m_viewManager->actionManager()->createAction("reload_preset_action");
     m_reloadButton->setDefaultAction(m_reloadAction);
@@ -143,6 +150,7 @@ KisPaintopBox::KisPaintopBox(KisViewManager *view, QWidget *parent, const char *
     m_alphaLockButton = new KisHighlightedToolButton(this);
     m_alphaLockButton->setFixedSize(iconsize, iconsize);
     m_alphaLockButton->setCheckable(true);
+    m_alphaLockButton->setAutoRaise(true);
 
     KisAction* alphaLockAction = m_viewManager->actionManager()->createAction("preserve_alpha");
     m_alphaLockButton->setDefaultAction(alphaLockAction);
@@ -187,6 +195,7 @@ KisPaintopBox::KisPaintopBox(KisViewManager *view, QWidget *parent, const char *
     m_hMirrorButton->setDefaultAction(m_hMirrorAction);
     m_hMirrorButton->setMenu(toolbarMenuXMirror);
     m_hMirrorButton->setPopupMode(QToolButton::MenuButtonPopup);
+    m_hMirrorButton->setAutoRaise(true);
 
     m_vMirrorButton = new KisHighlightedToolButton(this);
     m_vMirrorButton->setFixedSize(iconsize + menuPadding, iconsize);
@@ -195,13 +204,15 @@ KisPaintopBox::KisPaintopBox(KisViewManager *view, QWidget *parent, const char *
     m_vMirrorButton->setDefaultAction(m_vMirrorAction);
     m_vMirrorButton->setMenu(toolbarMenuYMirror);
     m_vMirrorButton->setPopupMode(QToolButton::MenuButtonPopup);
+    m_vMirrorButton->setAutoRaise(true);
 
     QAction *wrapAroundAction = m_viewManager->actionManager()->createAction("wrap_around_mode");
 
-    m_wrapAroundButton = new QToolButton(this);
+    m_wrapAroundButton = new KisHighlightedToolButton(this);
     m_wrapAroundButton->setFixedSize(iconsize, iconsize);
     m_wrapAroundButton->setDefaultAction(wrapAroundAction);
     m_wrapAroundButton->setCheckable(true);
+    m_wrapAroundButton->setAutoRaise(true);
 
     // add connections for horizontal and mirrror buttons
     connect(lockActionX, SIGNAL(toggled(bool)), this, SLOT(slotLockXMirrorToggle(bool)));
@@ -295,10 +306,11 @@ KisPaintopBox::KisPaintopBox(KisViewManager *view, QWidget *parent, const char *
     m_cmbCompositeOp->connectBlendmodeActions(m_viewManager->actionManager());
 
     m_workspaceWidget = new KisPopupButton(this);
-    m_workspaceWidget->setIcon(KisIconUtils::loadIcon("view-choose"));
+    m_workspaceWidget->setIcon(KisIconUtils::loadIcon("configure"));
     m_workspaceWidget->setToolTip(i18n("Choose workspace"));
     m_workspaceWidget->setFixedSize(iconsize, iconsize);
     m_workspaceWidget->setPopupWidget(new KisWorkspaceChooser(view));
+    m_workspaceWidget->setFlat(true);
 
     QHBoxLayout* baseLayout = new QHBoxLayout(this);
     m_paintopWidget = new QWidget(this);
@@ -396,10 +408,14 @@ KisPaintopBox::KisPaintopBox(KisViewManager *view, QWidget *parent, const char *
     QWidget* mirrorActions = new QWidget(this);
     QHBoxLayout* mirrorLayout = new QHBoxLayout(mirrorActions);
     mirrorLayout->addWidget(m_hMirrorButton);
+
+
     mirrorLayout->addWidget(m_vMirrorButton);
     mirrorLayout->addWidget(m_wrapAroundButton);
     mirrorLayout->setSpacing(4);
     mirrorLayout->setContentsMargins(0, 0, 0, 0);
+
+
 
     action = new QWidgetAction(this);
     KisActionRegistry::instance()->propertizeAction("mirror_actions", action);
@@ -518,10 +534,10 @@ KisPaintopBox::~KisPaintopBox()
     while (iter.hasNext()) {
         iter.next();
         if ((iter.key().pointer) == QTabletEvent::Eraser) {
-            cfg.writeEntry(QString("LastEraser") , iter.value().preset->name());
+            cfg.writeEntry(QString("LastEraser_%1").arg(iter.key().uniqueTabletId), iter.value().preset->name());
         }
         else {
-            cfg.writeEntry(QString("LastPreset"), iter.value().preset->name());
+            cfg.writeEntry(QString("LastPreset_%1").arg(iter.key().uniqueTabletId), iter.value().preset->name());
         }
     }
     // Do not delete the widget, since it is global to the application, not owned by the view
@@ -555,29 +571,29 @@ void KisPaintopBox::newOptionWidgets(const QList<QPointer<QWidget> > &optionWidg
 
 void KisPaintopBox::resourceSelected(KoResourceSP resource)
 {
-    KIS_SAFE_ASSERT_RECOVER_RETURN(m_optionWidget);
+    // This happens if no storages were available on startup
+    if (!m_optionWidget) {
+        KisPaintOpPresetSP preset = resource.dynamicCast<KisPaintOpPreset>();
+        setCurrentPaintop(preset);
+        return;
+    }
 
     m_presetsPopup->setCreatingBrushFromScratch(false); // show normal UI elements when we are not creating
-
-    //    qDebug() << ">>>>>>>>>>>>>>>" << resource
-    //             << (resource ? resource->name() : "")
-    //             << (resource ? QString("%1").arg(resource->valid()) : "")
-    //             << (resource ? QString("%1").arg(resource->filename()) : "");
 
     KisPaintOpPresetSP preset = resource.dynamicCast<KisPaintOpPreset>();
 
     if (preset && preset->valid() && preset != m_resourceProvider->currentPreset()) {
-        qWarning() << "Preset reloading if presets are dirty is broken";
-        //        if (!preset->settings()->isLoadable()) {
-        //            return;
-        //        }
-        //        if (!m_dirtyPresetsEnabled) {
-        //            KisSignalsBlocker blocker(m_optionWidget);
-        //            Q_UNUSED(blocker);
-        //            if (!preset->load()) {
-        //                qWarning() << "failed to load the preset.";
-        //            }
-        //        }
+        if (!m_dirtyPresetsEnabled) {
+            KisSignalsBlocker blocker(m_optionWidget);
+            Q_UNUSED(blocker);
+
+            KisPaintOpPresetResourceServer *rserver = KisResourceServerProvider::instance()->paintOpPresetServer();
+
+            if (!rserver->reloadResource(preset)) {
+                qWarning() << "failed to reload the preset.";
+            }
+        }
+
         dbgResources << "resourceSelected: preset" << preset << (preset ? QString("%1").arg(preset->valid()) : "");
         setCurrentPaintop(preset);
 
@@ -595,7 +611,6 @@ void KisPaintopBox::setCurrentPaintop(const KoID& paintop)
 
 void KisPaintopBox::setCurrentPaintop(KisPaintOpPresetSP preset)
 {
-
     if (preset == m_resourceProvider->currentPreset()) {
 
         if (preset == m_tabletToolMap[m_currTabletToolID].preset) {
@@ -647,7 +662,7 @@ void KisPaintopBox::setCurrentPaintop(KisPaintOpPresetSP preset)
     m_presetsPopup->setCurrentPaintOpId(paintop.id());
 
 
-    ////qDebug() << "\tsetting the new preset for" << m_currTabletToolID.uniqueID << "to" << preset->name();
+    //o() << "\tsetting the new preset for" << m_currTabletToolID.uniqueID << "to" << preset->name();
     m_paintOpPresetMap[m_resourceProvider->currentPreset()->paintOp()] = preset;
     m_tabletToolMap[m_currTabletToolID].preset = preset;
     m_tabletToolMap[m_currTabletToolID].paintOpID = preset->paintOp();
@@ -693,8 +708,8 @@ void KisPaintopBox::slotUpdateOptionsWidgetPopup()
 
 KisPaintOpPresetSP KisPaintopBox::defaultPreset(const KoID& paintOp)
 {
-    QString defaultName = paintOp.id() + ".kpp";
-    QString path = KoResourcePaths::findResource("kis_defaultpresets", defaultName);
+    QString path = ":/presets/" + paintOp.id() + ".kpp";
+    dbgResources << "Getting default presets from qrc resources" << path;
 
     KisPaintOpPresetSP preset(new KisPaintOpPreset(path));
 
@@ -1266,26 +1281,12 @@ void KisPaintopBox::slotReloadPreset()
 {
     KisSignalsBlocker blocker(m_optionWidget);
 
-    // Here using the name and fetching the preset from the server was the only way the load was working. Otherwise it was not loading.
     KisPaintOpPresetResourceServer *rserver = KisResourceServerProvider::instance()->paintOpPresetServer();
-    QSharedPointer<KisPaintOpPreset> preset = rserver->resourceByName(m_resourceProvider->currentPreset()->name());
+    QSharedPointer<KisPaintOpPreset> preset = m_resourceProvider->currentPreset();
+
     if (preset) {
-        preset->load(KisGlobalResourcesInterface::instance());
-    }
-
-    if (m_resourceProvider->currentPreset() != preset) {
-        m_resourceProvider->setPaintOpPreset(preset);
-    } else {
-        /**
-         * HACK ALERT: here we emit a private signal from the resource manager to
-         * ensure that all the subscribers of resource-changed signal got the
-         * notification. That is especially important for
-         * KisPaintopTransformationConnector. See bug 392622.
-         */
-
-        emit m_resourceProvider->resourceManager()->canvasResourceChanged(
-                    KoCanvasResource::CurrentPaintOpPreset,
-                    QVariant::fromValue(preset));
+        const bool result = rserver->reloadResource(preset);
+        KIS_SAFE_ASSERT_RECOVER_NOOP(result && "couldn't reload preset");
     }
 }
 void KisPaintopBox::slotGuiChangedCurrentPreset() // Called only when UI is changed and not when preset is changed
@@ -1395,7 +1396,7 @@ void KisPaintopBox::slotUpdateSelectionIcon()
 
     m_presetSelectorPopupButton->setIcon(KisIconUtils::loadIcon("paintop_settings_01"));
     m_brushEditorPopupButton->setIcon(KisIconUtils::loadIcon("paintop_settings_02"));
-    m_workspaceWidget->setIcon(KisIconUtils::loadIcon("view-choose"));
+    m_workspaceWidget->setIcon(KisIconUtils::loadIcon("configure"));
 
     m_eraseAction->setIcon(KisIconUtils::loadIcon("draw-eraser"));
     m_reloadAction->setIcon(KisIconUtils::loadIcon("view-refresh"));

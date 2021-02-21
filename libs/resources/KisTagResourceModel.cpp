@@ -8,6 +8,7 @@
 #include <QtSql>
 #include <KisResourceLocator.h>
 #include <KisResourceModel.h>
+#include <KisResourceModelProvider.h>
 #include <KisResourceQueryMapper.h>
 
 struct KisAllTagResourceModel::Private {
@@ -183,7 +184,7 @@ bool KisAllTagResourceModel::untagResource(const KisTagSP tag, const KoResourceS
 
     } while (d->query.next());
 
-    beginRemoveRows(QModelIndex(), d->query.at(), d->query.at() + 1);
+    beginRemoveRows(QModelIndex(), d->query.at(), d->query.at());
 
     {
         QSqlQuery q;
@@ -273,7 +274,7 @@ KisTagResourceModel::KisTagResourceModel(const QString &resourceType, QObject *p
     , d(new Private())
 {
     d->resourceType = resourceType;
-    d->sourceModel = new KisAllTagResourceModel(resourceType, parent);
+    d->sourceModel = KisResourceModelProvider::tagResourceModel(resourceType);
     setSourceModel(d->sourceModel);
 }
 
@@ -357,7 +358,8 @@ bool KisTagResourceModel::filterAcceptsRow(int source_row, const QModelIndex &so
     bool resourceStorageActive = idx.data(Qt::UserRole + KisAllTagResourceModel::ResourceStorageActive).toBool();
 
     if (d->tagFilter == ShowAllTags && d->resourceFilter == ShowAllResources && d->storageFilter == ShowAllStorages) {
-        return (d->tagIds.contains(tagId) && d->resourceIds.contains(resourceId));
+        return ((d->tagIds.contains(tagId) || d->tagIds.isEmpty()) &&
+                (d->resourceIds.contains(resourceId) || d->resourceIds.isEmpty()));
     }
 
     if ((d->tagFilter == ShowActiveTags && !tagActive)
@@ -433,6 +435,19 @@ bool KisTagResourceModel::updateResource(KoResourceSP resource)
 {
     KisResourceModel resourceModel(d->resourceType);
     bool r = resourceModel.updateResource(resource);
+    if (r) {
+        QModelIndex index = indexForResource(resource);
+        if (index.isValid()) {
+            emit dataChanged(index, index, {Qt::EditRole});
+        }
+    }
+    return r;
+}
+
+bool KisTagResourceModel::reloadResource(KoResourceSP resource)
+{
+    KisResourceModel resourceModel(d->resourceType);
+    bool r = resourceModel.reloadResource(resource);
     if (r) {
         QModelIndex index = indexForResource(resource);
         if (index.isValid()) {

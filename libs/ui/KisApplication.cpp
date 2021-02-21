@@ -98,7 +98,7 @@
 #include <KisSessionResource.h>
 #include <resources/KoSvgSymbolCollectionResource.h>
 
-#include "widgets/KisScreenColorPicker.h"
+#include "widgets/KisScreenColorSampler.h"
 #include "KisDlgInternalColorSelector.h"
 
 #include <dialogs/KisAsyncAnimationFramesSaveDialog.h>
@@ -124,6 +124,7 @@ public:
     QPointer<KisMainWindow> mainWindow; // The first mainwindow we create on startup
     bool batchRun {false};
     QVector<QByteArray> earlyRemoteArguments;
+    QVector<QString> earlyFileOpenEvents;
 };
 
 class KisApplication::ResetStarting
@@ -170,7 +171,7 @@ KisApplication::KisApplication(const QString &key, int &argc, char **argv)
 
 
     if (qgetenv("KRITA_NO_STYLE_OVERRIDE").isEmpty()) {
-        QStringList styles = QStringList() << "breeze" << "fusion" << "plastique";
+        QStringList styles = QStringList() << "breeze" << "fusion";
         if (!styles.contains(style()->objectName().toLower())) {
             Q_FOREACH (const QString & style, styles) {
                 if (!setStyle(style)) {
@@ -242,7 +243,6 @@ void KisApplication::addResourceTypes()
     KoResourcePaths::addResourceType("kis_images", "data", "/images/");
     KoResourcePaths::addResourceType("metadata_schema", "data", "/metadata/schemas/");
     KoResourcePaths::addResourceType("gmic_definitions", "data", "/gmic/");
-    KoResourcePaths::addResourceType("kis_defaultpresets", "data", "/defaultpresets/");
     KoResourcePaths::addResourceType("kis_shortcuts", "data", "/shortcuts/");
     KoResourcePaths::addResourceType("kis_actions", "data", "/actions");
     KoResourcePaths::addResourceType("kis_actions", "data", "/pykrita");
@@ -266,6 +266,21 @@ void KisApplication::addResourceTypes()
     d.mkpath(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/preset_icons/tool_icons/");
     d.mkpath(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/preset_icons/emblem_icons/");
 }
+
+
+bool KisApplication::event(QEvent *event)
+{
+
+    #ifdef Q_OS_MACOS
+    if (event->type() == QEvent::FileOpen) {
+        QFileOpenEvent *openEvent = static_cast<QFileOpenEvent *>(event);
+        emit fileOpenRequest(openEvent->file());
+        return true;
+    }
+    #endif
+    return QApplication::event(event);
+}
+
 
 bool KisApplication::registerResources()
 {
@@ -650,6 +665,13 @@ bool KisApplication::start(const KisApplicationArguments &args)
 
     KisUsageLogger::writeSysInfo(KisUsageLogger::screenInformation());
 
+    // process File open event files
+    if (!d->earlyFileOpenEvents.isEmpty()) {
+        hideSplashScreen();
+        Q_FOREACH(QString fileName, d->earlyFileOpenEvents) {
+            d->mainWindow->openDocument(QUrl::fromLocalFile(fileName), 0);
+        }
+    }
 
     // not calling this before since the program will quit there.
     return true;
@@ -778,11 +800,13 @@ void KisApplication::remoteArguments(QByteArray message, QObject *socket)
 
 void KisApplication::fileOpenRequested(const QString &url)
 {
-    KisMainWindow *mainWindow = KisPart::instance()->mainWindows().first();
-    if (mainWindow) {
-        KisMainWindow::OpenFlags flags = d->batchRun ? KisMainWindow::BatchMode : KisMainWindow::None;
-        mainWindow->openDocument(QUrl::fromLocalFile(url), flags);
+    if (!d->mainWindow) {
+        d->earlyFileOpenEvents.append(url);
+        return;
     }
+
+    KisMainWindow::OpenFlags flags = d->batchRun ? KisMainWindow::BatchMode : KisMainWindow::None;
+    d->mainWindow->openDocument(QUrl::fromLocalFile(url), flags);
 }
 
 

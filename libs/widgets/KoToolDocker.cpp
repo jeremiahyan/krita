@@ -108,7 +108,7 @@ public:
                     widget->show();
                     if (widget != currentWidgetList.last()) {
                         housekeeperLayout->addWidget(s = new QFrame(), cnt++, 0);
-                        s->setFrameShape(QFrame::HLine);
+                        s->setFrameStyle(QFrame::HLine | QFrame::Sunken);
                         currentAuxWidgets.insert(s);
                     }
                 }
@@ -137,8 +137,6 @@ KoToolDocker::KoToolDocker(QWidget *parent)
     : QDockWidget(i18n("Tool Options"), parent),
       d(new Private(this))
 {
-    setFeatures(DockWidgetMovable | DockWidgetFloatable);
-
     connect(this, SIGNAL(dockLocationChanged(Qt::DockWidgetArea)), this, SLOT(locationChanged(Qt::DockWidgetArea)));
 
     d->housekeeperWidget = new QWidget();

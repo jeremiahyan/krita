@@ -69,6 +69,10 @@ namespace KisLayerUtils
 
     KRITAIMAGE_EXPORT bool canChangeImageProfileInvisibly(KisImageSP image);
 
+    KRITAIMAGE_EXPORT void splitAlphaToMask(KisImageSP image, KisNodeSP node, const QString& maskName);
+
+    KRITAIMAGE_EXPORT void convertToPaintLayer(KisImageSP image, KisNodeSP src);
+
     typedef QMap<int, QSet<KisNodeSP> > FrameJobs;
     void updateFrameJobs(FrameJobs *jobs, KisNodeSP node);
     void updateFrameJobsRecursive(FrameJobs *jobs, KisNodeSP rootNode);
@@ -156,7 +160,6 @@ namespace KisLayerUtils
         KisNodeList m_selectedNodes;
         KisNodeSP m_activeNode;
     };
-
 
     class KRITAIMAGE_EXPORT KisSimpleUpdateCommand : public KisCommandUtils::FlipFlopCommand
     {

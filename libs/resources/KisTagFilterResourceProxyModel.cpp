@@ -31,6 +31,8 @@ struct KisTagFilterResourceProxyModel::Private
     bool filterInCurrentTag {false};
 
     QMap<QString, QVariant> metaDataMapFilter;
+    KisTagSP currentTagFilter;
+    KoResourceSP currentResourceFilter;
 
 };
 
@@ -116,6 +118,15 @@ bool KisTagFilterResourceProxyModel::updateResource(KoResourceSP resource)
     return false;
 }
 
+bool KisTagFilterResourceProxyModel::reloadResource(KoResourceSP resource)
+{
+    KisAbstractResourceModel *source = dynamic_cast<KisAbstractResourceModel*>(sourceModel());
+    if (source) {
+        return source->reloadResource(resource);
+    }
+    return false;
+}
+
 bool KisTagFilterResourceProxyModel::renameResource(KoResourceSP resource, const QString &name)
 {
     KisAbstractResourceModel *source = dynamic_cast<KisAbstractResourceModel*>(sourceModel());
@@ -142,47 +153,80 @@ void KisTagFilterResourceProxyModel::setMetaDataFilter(QMap<QString, QVariant> m
 
 void KisTagFilterResourceProxyModel::setTagFilter(const KisTagSP tag)
 {
-    if (!tag || tag->url() == "All") {
-        d->tagResourceModel->setTagsFilter(QVector<KisTagSP>());
-        setSourceModel(d->resourceModel);
-        d->resourceModel->showOnlyUntaggedResources(false);
-    }
-    else {
-        if (tag->url() == "All Untagged") {
-            setSourceModel(d->resourceModel);
-            d->resourceModel->showOnlyUntaggedResources(true);
+    d->currentTagFilter = tag;
+    updateTagFilter();
+}
+
+void KisTagFilterResourceProxyModel::updateTagFilter()
+{
+    const bool ignoreTagFiltering =
+        !d->filterInCurrentTag && !d->filter->isEmpty();
+
+    QAbstractItemModel *desiredModel = 0;
+
+    if (d->currentResourceFilter) {
+        QVector<KisTagSP> filter;
+        if (d->currentTagFilter &&
+            !ignoreTagFiltering &&
+            d->currentTagFilter->url() != "All" &&
+            d->currentTagFilter->url() != "All Untagged") {
+
+            filter << d->currentTagFilter;
+        } else {
+            // combination with for untagged resources in not implemented
+            // in KisTagResourceModel
+            KIS_SAFE_ASSERT_RECOVER_NOOP(!d->currentTagFilter ||
+                                         d->currentTagFilter->url() != "All Untagged");
+        }
+        d->tagResourceModel->setTagsFilter(filter);
+        d->tagResourceModel->setResourcesFilter({d->currentResourceFilter});
+        desiredModel = d->tagResourceModel;
+    } else {
+        d->tagResourceModel->setResourcesFilter(QVector<KoResourceSP>());
+
+        if (ignoreTagFiltering ||
+                !d->currentTagFilter ||
+                d->currentTagFilter->url() == "All") {
+
+            d->tagResourceModel->setTagsFilter(QVector<KisTagSP>());
+            desiredModel = d->resourceModel;
+            d->resourceModel->showOnlyUntaggedResources(false);
         }
         else {
-            setSourceModel(d->tagResourceModel);
-            d->tagResourceModel->setTagsFilter(QVector<KisTagSP>() << tag);
+            if (d->currentTagFilter->url() == "All Untagged") {
+                desiredModel = d->resourceModel;
+                d->resourceModel->showOnlyUntaggedResources(true);
+            }
+            else {
+                desiredModel = d->tagResourceModel;
+                d->tagResourceModel->setTagsFilter(QVector<KisTagSP>() << d->currentTagFilter);
+            }
         }
     }
+
+    // TODO: when model changes the current selection in the
+    //       view disappears. We should try to keep it somehow.
+    setSourceModel(desiredModel);
+
     invalidateFilter();
 }
 
 void KisTagFilterResourceProxyModel::setResourceFilter(const KoResourceSP resource)
 {
-    if (resource) {
-        d->tagResourceModel->setResourcesFilter(QVector<KoResourceSP>() << resource);
-        setSourceModel(d->tagResourceModel);
-    }
-    else {
-        setSourceModel(d->resourceModel);
-    }
-    invalidateFilter();
-
+    d->currentResourceFilter = resource;
+    updateTagFilter();
 }
 
 void KisTagFilterResourceProxyModel::setSearchText(const QString& searchText)
 {
     d->filter->setFilter(searchText);
-    invalidateFilter();
+    updateTagFilter();
 }
 
 void KisTagFilterResourceProxyModel::setFilterInCurrentTag(bool filterInCurrentTag)
 {
     d->filterInCurrentTag = filterInCurrentTag;
-    invalidateFilter();
+    updateTagFilter();
 }
 
 bool KisTagFilterResourceProxyModel::tagResource(KisTagSP tag, KoResourceSP resource)
@@ -202,9 +246,8 @@ bool KisTagFilterResourceProxyModel::filterAcceptsColumn(int /*source_column*/, 
 
 bool KisTagFilterResourceProxyModel::filterAcceptsRow(int source_row, const QModelIndex &source_parent) const
 {
-    // we don't need to check anything else because the user wants to search in all resources
-    // but if the filter text is empty, we do need to filter by the current tag
-    if (!d->filterInCurrentTag && d->filter->isEmpty() && d->metaDataMapFilter.isEmpty()) {
+    // if both filters are empty, just accept everything
+    if (d->filter->isEmpty() && d->metaDataMapFilter.isEmpty()) {
         return true;
     }
 
@@ -220,12 +263,16 @@ bool KisTagFilterResourceProxyModel::filterAcceptsRow(int source_row, const QMod
     QMap<QString, QVariant> resourceMetaData = sourceModel()->data(idx, Qt::UserRole + KisAbstractResourceModel::MetaData).toMap();
     Q_FOREACH(const QString &key, d->metaDataMapFilter.keys()) {
         if (resourceMetaData.contains(key)) {
-            metaDataMatches = (resourceMetaData[key] != d->metaDataMapFilter[key]);
+            metaDataMatches = (resourceMetaData[key] == d->metaDataMapFilter[key]);
+            if (!metaDataMatches) {
+                return false;
+            }
         }
     }
 
     QString resourceName = sourceModel()->data(idx, Qt::UserRole + KisAbstractResourceModel::Name).toString();
-    bool resourceNameMatches = d->filter->matchesResource(resourceName);
+    QStringList resourceTags = sourceModel()->data(idx, Qt::UserRole + KisAbstractResourceModel::Tags).toStringList();
+    bool resourceNameMatches = d->filter->matchesResource(resourceName, resourceTags);
 
 
     return (resourceNameMatches && metaDataMatches);
